@@ -173,9 +173,14 @@ export type QueryMode = 'naive' | 'local' | 'global' | 'hybrid' | 'mix' | 'bypas
 export type Message = {
   role: 'user' | 'assistant' | 'system'
   content: string
+  answer?: string
+  thinking?: string | null
   thinkingContent?: string
   displayContent?: string
   thinkingTime?: number | null
+  references?: Array<Record<string, any>>
+  rag_trace?: Record<string, any> | null
+  raw_response?: string
 }
 
 export type QueryRequest = {
@@ -213,8 +218,67 @@ export type QueryRequest = {
   enable_rerank?: boolean
 }
 
+
 export type QueryResponse = {
   response: string
+  answer?: string
+  thinking?: string | null
+  content?: string
+  reasoning_content?: string | null
+  raw_response?: string
+  rag_trace?: Record<string, any> | null
+  references?: Array<Record<string, any>>
+}
+
+export type QueryStreamChunk = {
+  response?: string
+  answer?: string
+  thinking?: string | null
+  content?: string
+  reasoning_content?: string | null
+  raw_response?: string
+  rag_trace?: Record<string, any> | null
+  references?: Array<Record<string, any>>
+  error?: string
+}
+
+
+type QueryPayloadLike = {
+  response?: string
+  answer?: string
+  thinking?: string | null
+  content?: string
+  reasoning_content?: string | null
+  raw_response?: string
+  rag_trace?: Record<string, any> | null
+  references?: Array<Record<string, any>>
+  error?: string
+}
+
+const normalizeQueryPayload = (data: QueryPayloadLike): QueryResponse => {
+  const hasStructuredThinking = data.thinking !== undefined || data.reasoning_content !== undefined
+  const response = data.response ?? data.answer ?? data.content ?? data.raw_response ?? ''
+  const answer = data.answer ?? data.content ?? (!hasStructuredThinking ? (data.response ?? data.raw_response ?? response) : undefined)
+  const thinking = data.thinking ?? data.reasoning_content
+
+  return {
+    response,
+    ...(answer !== undefined ? { answer } : {}),
+    ...(thinking !== undefined ? { thinking } : {}),
+    ...(data.content !== undefined ? { content: data.content } : {}),
+    ...(data.reasoning_content !== undefined ? { reasoning_content: data.reasoning_content } : {}),
+    ...(data.raw_response !== undefined ? { raw_response: data.raw_response } : {}),
+    ...(data.rag_trace !== undefined ? { rag_trace: data.rag_trace } : {}),
+    ...(data.references !== undefined ? { references: data.references } : {}),
+  }
+}
+
+const normalizeQueryStreamChunk = (data: QueryPayloadLike): QueryStreamChunk => {
+  const normalized = normalizeQueryPayload(data)
+  return {
+    ...normalized,
+    ...(data.error !== undefined ? { error: data.error } : {}),
+  }
 }
 
 export type EntityUpdateResponse = {
@@ -356,6 +420,20 @@ export type LoginResponse = {
   webui_description?: string
 }
 
+export type WorkspaceInfo = {
+  name: string
+  storage_key: string
+  is_default: boolean
+}
+
+export type WorkspacesResponse = {
+  workspaces: WorkspaceInfo[]
+  current_workspace: string
+  default_workspace: string
+  workspace?: WorkspaceInfo
+  deleted_directories?: string[]
+}
+
 export const InvalidApiKeyError = 'Invalid API Key'
 export const RequireApiKeError = 'API Key required'
 
@@ -424,6 +502,7 @@ axiosInstance.interceptors.request.use((config) => {
   }
 
   const apiKey = useSettingsStore.getState().apiKey
+  const workspace = useSettingsStore.getState().workspace
   const token = localStorage.getItem('LIGHTRAG-API-TOKEN');
 
   // Always include token if it exists, regardless of path
@@ -432,6 +511,9 @@ axiosInstance.interceptors.request.use((config) => {
   }
   if (apiKey) {
     config.headers['X-API-Key'] = apiKey
+  }
+  if (workspace) {
+    config.headers['LIGHTRAG-WORKSPACE'] = workspace
   }
   return config
 })
@@ -569,6 +651,26 @@ export const checkHealth = async (): Promise<
   }
 }
 
+export const getWorkspaces = async (): Promise<WorkspacesResponse> => {
+  const response = await axiosInstance.get('/workspaces')
+  return response.data
+}
+
+export const createWorkspace = async (name: string): Promise<WorkspacesResponse> => {
+  const response = await axiosInstance.post('/workspaces', { name })
+  return response.data
+}
+
+export const renameWorkspace = async (workspace: string, name: string): Promise<WorkspacesResponse> => {
+  const response = await axiosInstance.put(`/workspaces/${encodeURIComponent(workspace)}`, { name })
+  return response.data
+}
+
+export const deleteWorkspace = async (workspace: string): Promise<WorkspacesResponse> => {
+  const response = await axiosInstance.delete(`/workspaces/${encodeURIComponent(workspace)}`)
+  return response.data
+}
+
 export const getDocuments = async (): Promise<DocsStatusesResponse> => {
   const response = await axiosInstance.get('/documents')
   return response.data
@@ -594,7 +696,7 @@ export const queryText = async (
   signal?: AbortSignal
 ): Promise<QueryResponse> => {
   const response = await axiosInstance.post('/query', request, { signal })
-  return response.data
+  return normalizeQueryPayload(response.data as QueryPayloadLike)
 }
 
 /**
@@ -616,7 +718,7 @@ export const isUserAbortError = (
  */
 async function _readNdjsonStream(
   response: Response,
-  onChunk: (chunk: string) => void,
+  onChunk: (chunk: string, data?: QueryStreamChunk) => void,
   onError: ((error: string) => void) | undefined
 ): Promise<void> {
   if (!response.body) {
@@ -643,11 +745,13 @@ async function _readNdjsonStream(
         if (!trimmed) continue;
 
         try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed.response) {
-            onChunk(parsed.response);
-          } else if (parsed.error) {
-            onError?.(parsed.error);
+          const parsed = JSON.parse(trimmed) as QueryStreamChunk;
+          const normalized = normalizeQueryStreamChunk(parsed as QueryPayloadLike);
+          const chunkText = normalized.response ?? normalized.answer ?? normalized.content ?? normalized.raw_response ?? '';
+          if (chunkText || normalized.thinking || normalized.references || normalized.rag_trace) {
+            onChunk(chunkText, normalized);
+          } else if (normalized.error) {
+            onError?.(normalized.error);
           }
           // references-only lines are silently consumed —
           // the caller only cares about response chunks and errors.
@@ -670,11 +774,13 @@ async function _readNdjsonStream(
   // Process any remaining data in the buffer after the stream ends
   if (buffer.trim()) {
     try {
-      const parsed = JSON.parse(buffer);
-      if (parsed.response) {
-        onChunk(parsed.response);
-      } else if (parsed.error) {
-        onError?.(parsed.error);
+      const parsed = JSON.parse(buffer) as QueryStreamChunk;
+      const normalized = normalizeQueryStreamChunk(parsed as QueryPayloadLike);
+      const chunkText = normalized.response ?? normalized.answer ?? normalized.content ?? normalized.raw_response ?? '';
+      if (chunkText || normalized.thinking) {
+        onChunk(chunkText, normalized);
+      } else if (normalized.error) {
+        onError?.(normalized.error);
       }
     } catch {
       console.warn('Failed to parse final NDJSON buffer:', buffer.substring(0, 120));
@@ -690,6 +796,7 @@ async function _readNdjsonStream(
  */
 function _buildStreamHeaders(): HeadersInit {
   const apiKey = useSettingsStore.getState().apiKey;
+  const workspace = useSettingsStore.getState().workspace;
   const token = localStorage.getItem('LIGHTRAG-API-TOKEN');
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -700,6 +807,9 @@ function _buildStreamHeaders(): HeadersInit {
   }
   if (apiKey) {
     headers['X-API-Key'] = apiKey;
+  }
+  if (workspace) {
+    headers['LIGHTRAG-WORKSPACE'] = workspace;
   }
   return headers;
 }
@@ -780,7 +890,7 @@ async function _throwStreamHttpError(response: Response): Promise<never> {
 
 export const queryTextStream = async (
   request: QueryRequest,
-  onChunk: (chunk: string) => void,
+  onChunk: (chunk: string, data?: QueryStreamChunk) => void,
   onError?: (error: string) => void,
   signal?: AbortSignal
 ) => {

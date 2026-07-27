@@ -36,8 +36,25 @@
   "common": {
     "cancel": "Cancel",
     "save": "Save",
+    "create": "Create",
+    "delete": "Delete",
     "saving": "Saving...",
     "saveFailed": "Save failed"
+  },
+  "workspace": {
+    "select": "Workspace",
+    "defaultBadge": "default",
+    "create": "Create workspace",
+    "rename": "Rename workspace",
+    "delete": "Delete workspace",
+    "createTitle": "Create workspace",
+    "createDescription": "Create an isolated workspace for documents, graph, and query state.",
+    "renameTitle": "Rename workspace",
+    "renameDescription": "Only the display name changes. Existing storage data is not moved.",
+    "deleteTitle": "Delete workspace",
+    "deleteDescription": "This permanently removes the selected workspace data. This action cannot be undone.",
+    "namePlaceholder": "workspace-name",
+    "nameRequired": "Workspace name is required"
   },
   "documentPanel": {
     "clearDocuments": {
@@ -406,8 +423,9 @@
       "copyFailed": "Failed to copy content",
       "copyManualInstruction": "Please select and copy the text manually",
       "thinking": "Thinking...",
-      "thinkingTime": "Thinking time {{time}}s",
-      "thinkingInProgress": "Thinking in progress..."
+      "thinkingTime": "Thought for {{time}}s",
+      "thinkingInProgress": "Thinking...",
+      "thinkingComplete": "Thought complete"
     },
     "retrieval": {
       "startPrompt": "Start a retrieval by typing your query below",

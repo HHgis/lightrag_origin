@@ -62,6 +62,10 @@ interface SettingsState {
   querySettings: Omit<QueryRequest, 'query'>
   updateQuerySettings: (settings: Partial<QueryRequest>) => void
 
+  // Workspace settings
+  workspace: string
+  setWorkspace: (workspace: string) => void
+
   // Auth settings
   apiKey: string | null
   setApiKey: (key: string | null) => void
@@ -111,6 +115,8 @@ const useSettingsStoreBase = create<SettingsState>()(
       queryLabel: defaultQueryLabel,
 
       enableHealthCheck: true,
+
+      workspace: '',
 
       apiKey: null,
 
@@ -184,6 +190,18 @@ const useSettingsStoreBase = create<SettingsState>()(
 
       setApiKey: (apiKey: string | null) => set({ apiKey }),
 
+      setWorkspace: (workspace: string) =>
+        set((state) => {
+          if (state.workspace === workspace) {
+            return { workspace }
+          }
+          return {
+            workspace,
+            retrievalHistory: [],
+            queryLabel: defaultQueryLabel
+          }
+        }),
+
       setCurrentTab: (tab: Tab) => set({ currentTab: tab }),
 
       setRetrievalHistory: (history: Message[]) => set({ retrievalHistory: history }),
@@ -238,7 +256,7 @@ const useSettingsStoreBase = create<SettingsState>()(
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => localStorage),
-      version: 20,
+      version: 21,
       migrate: (state: any, version: number) => {
         if (version < 2) {
           state.showEdgeLabel = false
@@ -351,6 +369,9 @@ const useSettingsStoreBase = create<SettingsState>()(
             ...existing,
             ...suggestedUserPrompts.filter((p: string) => !existing.includes(p))
           ]
+        }
+        if (version < 21) {
+          state.workspace = state.workspace ?? ''
         }
         return state
       }

@@ -36,8 +36,25 @@
   "common": {
     "cancel": "取消",
     "save": "保存",
+    "create": "创建",
+    "delete": "删除",
     "saving": "保存中...",
     "saveFailed": "保存失败"
+  },
+  "workspace": {
+    "select": "工作空间",
+    "defaultBadge": "默认",
+    "create": "新建工作空间",
+    "rename": "重命名工作空间",
+    "delete": "删除工作空间",
+    "createTitle": "新建工作空间",
+    "createDescription": "为文档、图谱和检索状态创建隔离的工作空间。",
+    "renameTitle": "重命名工作空间",
+    "renameDescription": "只修改显示名称，已有存储数据不会迁移。",
+    "deleteTitle": "删除工作空间",
+    "deleteDescription": "此操作会永久删除当前工作空间数据，且无法撤销。",
+    "namePlaceholder": "workspace-name",
+    "nameRequired": "请输入工作空间名称"
   },
   "documentPanel": {
     "clearDocuments": {
@@ -406,8 +423,9 @@
       "copyFailed": "复制内容失败",
       "copyManualInstruction": "请手动选择并复制文本",
       "thinking": "正在思考...",
-      "thinkingTime": "思考用时 {{time}} 秒",
-      "thinkingInProgress": "思考进行中..."
+      "thinkingTime": "已思考（用时 {{time}} 秒）",
+      "thinkingInProgress": "正在思考",
+      "thinkingComplete": "已思考"
     },
     "retrieval": {
       "startPrompt": "输入查询开始检索",
